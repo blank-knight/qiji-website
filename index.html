@@ -1104,6 +1104,15 @@ gltfLoader.load(PLANET_LIGHTS_GLB, (gltf) => {
     starOccluder.layers.set(LAYERS.BLOOM_SCENE);
     planetGroup.add(starOccluder);
     buildMarkers(mesh);
+    /* 预热：入场动画开始前先干跑一轮三通道渲染，把 shader 编译(注入 snoise 的
+       复杂程序首编译可达秒级)+6000²纹理上传+渲染目标分配全部消耗在星球还
+       隐形(osphere opacity=0, 云 uOpacity=0)的阶段，动画期不再卡顿。 */
+    camera.layers.set(LAYERS.TORUS_SCENE);
+    torusComposer.render();
+    camera.layers.set(LAYERS.BLOOM_SCENE);
+    bloomComposer.render();
+    camera.layers.set(LAYERS.ENTIRE_SCENE);
+    finalComposer.render();
     cloudGroup.visible = true;
     planetLoadedAt = performance.now();
   }, undefined, (e) => { console.warn('[qiji-ascend] planet.glb failed', e); });
@@ -1154,7 +1163,7 @@ function stepFrame(dt) {
     if (entryT >= 1) { entryT = 1; entryDone = true; }
     const e = 1 - Math.pow(1 - entryT, 3);
     entryY = ENTRY_START_Y * (1 - e);
-    entryFade = Math.min(1, entryT / 0.35); /* 前35%时长完成淡入,探头前已接近全亮 */
+    entryFade = Math.min(1, entryT / 0.6); /* 淡入拉长到60%:与浮升同步收尾,消除"已全亮又卡一下"的跳变 */
     if (planetMesh) planetMesh.material.opacity = entryFade;
     for (const cm of cloudMeshes) {
       if (cm.userData.shader && cm.userData.baseOpacity != null) {
