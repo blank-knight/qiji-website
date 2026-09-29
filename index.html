@@ -462,7 +462,7 @@ const CONFIG = {
   cloud2Height:1.03, cloud2Opacity:0.5, cloud2Spin:0.14,
   cloud3Height:1.075, cloud3Opacity:0.5, cloud3Spin:0.1,
   bgColor:'#040a1e', flameColor:'#3a6cff', flameColor2:'#c1faff', flameAmt:0.15,
-  atmoColor:'#9fc4ff', atmoCount:320, atmoSize:22, atmoSpeed:0.8,
+  atmoColor:'#9fc4ff', atmoCount:90, atmoSize:16, atmoSpeed:0.8,
   starColor:'#cfe0ff', starCount:1400, starSize:1.6, starFlicker:1,
   markerColor:'#ffd27a', markerCount:60, markerSize:16, markerSpeed:0.5,
 };
@@ -632,6 +632,7 @@ const glowMat = new THREE.ShaderMaterial({
   transparent: true,
   side: THREE.DoubleSide,
   depthWrite: false,
+  depthTest: false,
   blending: THREE.AdditiveBlending,
   uniforms: {
     uGlow: { value: hexToVec3(CONFIG.glowColor) },
@@ -699,7 +700,7 @@ const moteMat = new THREE.ShaderMaterial({
   fragmentShader: `
     uniform vec3 uColor; varying float vA;
     void main(){ vec2 p = gl_PointCoord - 0.5; float l = length(p); if (l > 0.5) discard;
-      float tex = smoothstep(0.5, 0.0, l); gl_FragColor = vec4(uColor * tex, tex * vA * 0.55); }`,
+      float tex = smoothstep(0.5, 0.0, l); gl_FragColor = vec4(uColor * tex, tex * vA * 0.3); }`,
 });
 const motes = new THREE.Points(moteGeo, moteMat);
 motes.layers.set(LAYERS.BLOOM_SCENE);
@@ -1081,6 +1082,13 @@ gltfLoader.load(PLANET_LIGHTS_GLB, (gltf) => {
     mesh.layers.set(LAYERS.TORUS_SCENE);
     planetGroup.add(mesh);
     planetMesh = mesh;
+    /* 深度遮挡体：星空在 BLOOM 通道渲染，看不到 TORUS 通道的星球深度，
+       会导致星点透过星球盘面闪烁。这里放一个只写深度的隐形球体，
+       让 stars 的 depthTest 正确剔除被星球挡住的星。 */
+    const starOccluder = new THREE.Mesh(mesh.geometry, new THREE.MeshBasicMaterial({ colorWrite: false }));
+    starOccluder.scale.copy(mesh.scale);
+    starOccluder.layers.set(LAYERS.BLOOM_SCENE);
+    planetGroup.add(starOccluder);
     buildMarkers(mesh);
     cloudGroup.visible = true;
     planetLoadedAt = performance.now();
@@ -1145,6 +1153,9 @@ function animate() {
   finalComposer.render();
 }
 animate();
+
+/* debug hook（验收/调试用）：window.__qiji.stars.visible=false 可逐对象归因 */
+window.__qiji = { scene, camera, worldGroup, planetGroup, cloudGroup, stars, motes, glowMesh, renderer };
 
 /* ================= resize ================= */
 window.addEventListener('resize', () => {
