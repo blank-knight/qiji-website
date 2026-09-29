@@ -560,11 +560,15 @@ const FinalPass = {
     iTime:{value:0}, tDiffuse:{value:null}, torusTexture:{value:null}, bloomTexture:{value:null}, haloTexture:{value:null},
     uBg:{value:hexToVec3(CONFIG.bgColor)}, uFlameA:{value:hexToVec3(CONFIG.flameColor)},
     uFlameB:{value:hexToVec3(CONFIG.flameColor2)}, uFlameAmt:{value:CONFIG.flameAmt},
+    /* 闪烁修复：焰光独立慢时钟 + 星球盘面遮罩(xy=盘心uv, z=盘半径uv, w=宽高比)。
+       原版 warp3d(iTime*1.5) 全屏蓝纹直接叠在星球表面 → 整球像坏灯泡呼吸。 */
+    uFlameTime:{value:0}, uPlanetMask:{value:new THREE.Vector4(0.5, 0.5, 1.5, 1.0)},
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position, 1.0); }`,
   fragmentShader: `
     uniform float iTime; uniform sampler2D tDiffuse; uniform sampler2D bloomTexture; uniform sampler2D torusTexture; uniform sampler2D haloTexture;
     uniform vec3 uBg; uniform vec3 uFlameA; uniform vec3 uFlameB; uniform float uFlameAmt;
+    uniform float uFlameTime; uniform vec4 uPlanetMask;
     varying vec2 vUv;
     vec3 warp3d(vec3 pos, float t){ float curv=.8,a=1.9,b=0.7; pos*=2.;
       pos.x+=curv*sin(t+a*pos.y)+t*b; pos.y+=curv*cos(t+a*pos.x);
@@ -573,10 +577,13 @@ const FinalPass = {
       return 0.5+0.5*cos(pos.xyz+vec3(1,2,4)); }
     void main(){
       vec2 uv = 2.*vUv - 1.;
-      vec3 w = pow(warp3d(vec3(uv.x, sin(uv.y), uv.y), iTime*1.5), vec3(1.5));
+      vec3 w = pow(warp3d(vec3(uv.x, sin(uv.y), uv.y), uFlameTime), vec3(1.5));
       vec3 flame = 1.5*uFlameA*w.x; flame*=w.y; flame += uFlameB*w.z;
       flame *= smoothstep(0.25, 1., abs(uv.y));
       float md = smoothstep(-0.7, 1., -uv.y*uv.x); flame *= md*md;
+      /* 星球盘面(+35%边距含云层/光晕内圈)内焰光淡出，球面不再被蓝纹覆盖 */
+      float pd = length(vec2((vUv.x - uPlanetMask.x) * uPlanetMask.w, vUv.y - uPlanetMask.y)) / uPlanetMask.z;
+      flame *= smoothstep(1.0, 1.35, pd);
       vec3 bg = uBg * (1.0 - 0.4 * length(uv));
       vec3 halo = texture2D(haloTexture, vUv).xyz;
       gl_FragColor = vec4(bg + flame*uFlameAmt + texture2D(bloomTexture, vUv).xyz + texture2D(torusTexture, vUv).xyz + texture2D(tDiffuse, vUv).xyz + halo, 1.);
@@ -1105,12 +1112,12 @@ worldGroup.scale.setScalar(STOPS_S[0].v);
 let curP = 0;
 let curX = STOPS_X[0].v, curY = STOPS_Y[0].v, curS = STOPS_S[0].v;
 let spinPhase = 0;
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
 
 const clock = new THREE.Clock();
 
-function animate() {
-  requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05);
+function stepFrame(dt) {
+  dt = Math.min(dt, 0.05);
 
   planetTime.value += dt / 12;
   cloudTime.value += dt / 20;
@@ -1145,17 +1152,47 @@ function animate() {
   motes.position.copy(camera.position);
   controls.update();
 
+  /* 焰光慢时钟 + 星球盘面遮罩（防蓝纹盖球面闪烁） */
+  finalPass.uniforms.uFlameTime.value = finalPass.uniforms.iTime.value * 0.5;
+  if (planetMesh) {
+    planetGroup.updateWorldMatrix(true, false);
+    const c = _v1.setFromMatrixPosition(planetGroup.matrixWorld);
+    const p2 = _v2.copy(planetGroup.localToWorld(_v3.set(planetMesh.scale.x * CONFIG.planetRadius, 0, 0)));
+    const cp = c.clone().project(camera);
+    const pp = p2.clone().project(camera);
+    const cx = (cp.x + 1) / 2, cy = (cp.y + 1) / 2;
+    const rx = Math.abs(pp.x - cp.x) / 2, ry = Math.abs(pp.y - cp.y) / 2; /* NDC→UV 单位 */
+    const aspect = camera.aspect;
+    finalPass.uniforms.uPlanetMask.value.set(cx, cy, Math.max(rx, ry, 0.01), aspect);
+  }
+
   camera.layers.set(LAYERS.TORUS_SCENE);
+  /* 修乒乓闪烁：EffectComposer 的 swapBuffers 状态跨帧残留，
+     奇偶帧 renderTarget1 在“成品”与“半成品(缺gamma/copy)”间交替 → 整屏亮度每帧跳变。
+     每帧强制复位读写指针，并动态采样 readBuffer（链路写入侧，恒为最新成品）。 */
+  torusComposer.writeBuffer = torusComposer.renderTarget1;
+  torusComposer.readBuffer = torusComposer.renderTarget2;
   torusComposer.render();
   camera.layers.set(LAYERS.BLOOM_SCENE);
+  bloomComposer.writeBuffer = bloomComposer.renderTarget1;
+  bloomComposer.readBuffer = bloomComposer.renderTarget2;
   bloomComposer.render();
   camera.layers.set(LAYERS.ENTIRE_SCENE);
+  finalPass.uniforms.torusTexture.value = torusComposer.readBuffer.texture;
+  finalPass.uniforms.bloomTexture.value = bloomComposer.readBuffer.texture;
   finalComposer.render();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  stepFrame(clock.getDelta());
 }
 animate();
 
-/* debug hook（验收/调试用）：window.__qiji.stars.visible=false 可逐对象归因 */
-window.__qiji = { scene, camera, worldGroup, planetGroup, cloudGroup, stars, motes, glowMesh, renderer };
+/* debug hook（验收/调试用）：window.__qiji.stars.visible=false 可逐对象归因；
+   无头环境 rAF 冻结时用 __qiji.stepFrame(0.05) 手动逐帧推进做帧差分 */
+window.__qiji = { scene, camera, worldGroup, planetGroup, cloudGroup, stars, motes, glowMesh, renderer,
+  stepFrame, finalPass, times: { planetTime, cloudTime, starTime, markerTime } };
 
 /* ================= resize ================= */
 window.addEventListener('resize', () => {
