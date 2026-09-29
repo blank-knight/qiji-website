@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>个人中心 — 奇计 Agent</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>▲</text></svg>">
+<style>
+:root{
+  --bg:#04060f; --bg-2:#060a18; --ink:#f3f6ff; --muted:#9aa6c4; --muted-2:#6b7796;
+  --line:rgba(150,175,230,.12); --line-strong:rgba(150,175,230,.22);
+  --accent:#5df0a8; --accent-2:#2fd38a; --accent-ink:#032018;
+  --glass:rgba(12,18,38,.55); --glass-2:rgba(16,24,48,.65);
+  --radius:18px; --radius-lg:26px; --maxw:1080px;
+  --shadow:0 30px 80px -30px rgba(0,0,0,.75);
+  --font:'Inter',-apple-system,BlinkMacSystemFont,system-ui,'PingFang SC','Microsoft YaHei',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--font);color:var(--ink);background:
+  radial-gradient(120% 90% at 50% -20%, #0a1230 0%, var(--bg) 55%) fixed,
+  var(--bg);
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;min-height:100vh}
+a{color:inherit;text-decoration:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;font-size:15px;font-weight:600;padding:13px 22px;border-radius:999px;border:1px solid transparent;cursor:pointer;transition:transform .18s ease,box-shadow .25s ease,background .2s ease,border-color .2s ease;white-space:nowrap}
+.btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
+.btn-primary{color:var(--accent-ink);background:linear-gradient(180deg,var(--accent),var(--accent-2));box-shadow:0 10px 30px -8px rgba(93,240,168,.55),inset 0 1px 0 rgba(255,255,255,.4)}
+.btn-primary:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 16px 38px -8px rgba(93,240,168,.7)}
+.btn-outline{color:var(--ink);background:rgba(255,255,255,.04);border-color:var(--line-strong);backdrop-filter:blur(10px)}
+.btn-outline:hover:not(:disabled){background:rgba(255,255,255,.09);transform:translateY(-2px)}
+.btn-block{width:100%}
+.topbar{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);background:rgba(4,6,15,.72);border-bottom:1px solid var(--line)}
+.topbar-in{max-width:var(--maxw);margin:0 auto;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.brand{display:inline-flex;align-items:center;gap:9px;font-weight:800;font-size:18px;letter-spacing:.14em}
+.brand-mark{color:var(--accent);font-size:13px;transform:translateY(-1px)}
+.topbar-user{display:flex;align-items:center;gap:12px;font-size:14px;color:var(--muted)}
+.score-pill{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;border:1px solid rgba(93,240,168,.28);background:rgba(93,240,168,.08);color:var(--accent);font-weight:700;font-size:14px}
+.link-btn{background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;transition:color .2s;font-family:inherit}
+.link-btn:hover{color:var(--ink)}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:36px 24px 80px}
+
+/* ===== auth ===== */
+.auth-shell{min-height:calc(100vh - 63px);display:flex;align-items:center;justify-content:center;padding:40px 20px}
+.auth-card{width:100%;max-width:420px;padding:38px 34px;border-radius:var(--radius-lg);background:var(--glass-2);border:1px solid var(--line-strong);box-shadow:var(--shadow);backdrop-filter:blur(18px)}
+.auth-tabs{display:flex;gap:6px;padding:5px;border-radius:999px;background:rgba(0,0,0,.3);border:1px solid var(--line);margin-bottom:26px}
+.auth-tab{flex:1;text-align:center;padding:9px 0;border-radius:999px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .2s}
+.auth-tab.on{background:linear-gradient(180deg,var(--accent),var(--accent-2));color:var(--accent-ink)}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:13px;color:var(--muted);margin-bottom:8px}
+.field input{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line-strong);background:rgba(0,0,0,.3);color:var(--ink);font-size:15px;font-family:inherit;outline:none;transition:border-color .2s,box-shadow .2s}
+.field input:focus{border-color:rgba(93,240,168,.5);box-shadow:0 0 0 3px rgba(93,240,168,.12)}
+.field-tip{font-size:12px;color:var(--muted-2);margin-top:6px}
+.auth-msg{min-height:20px;font-size:13.5px;margin:4px 0 12px}
+.auth-msg.err{color:#ff8f8f}
+.auth-msg.ok{color:var(--accent)}
+.auth-foot{margin-top:18px;text-align:center;font-size:13px;color:var(--muted-2)}
+.auth-foot a{color:var(--accent);cursor:pointer}
+
+/* ===== dashboard ===== */
+.view{display:none}
+.view.on{display:block}
+.hero-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:28px}
+.hcard{padding:26px;border-radius:var(--radius);background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px)}
+.hcard .lbl{font-size:13px;color:var(--muted-2);letter-spacing:.08em}
+.hcard .val{margin-top:10px;font-size:clamp(26px,3.4vw,38px);font-weight:800;background:linear-gradient(180deg,#fff,var(--accent));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;line-height:1.1}
+.hcard .sub{margin-top:8px;font-size:13px;color:var(--muted)}
+.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;margin-left:8px;vertical-align:middle}
+.badge.formal{background:rgba(93,240,168,.14);color:var(--accent);border:1px solid rgba(93,240,168,.3)}
+.badge.trial{background:rgba(154,166,196,.12);color:var(--muted);border:1px solid var(--line-strong)}
+.panel{border-radius:var(--radius-lg);background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(14px);padding:28px;margin-bottom:22px}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.panel-head h3{font-size:18px;font-weight:700}
+.panel-head .hint{font-size:13px;color:var(--muted-2)}
+.kv{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 24px;font-size:14.5px}
+.kv .k{color:var(--muted-2);font-size:13px;margin-bottom:4px}
+.plans-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.plan-card{padding:22px;border-radius:var(--radius);border:1px solid var(--line);background:rgba(0,0,0,.22);display:flex;flex-direction:column}
+.plan-card .pname{font-size:16px;font-weight:700}
+.plan-card .pprice{margin-top:12px;font-size:28px;font-weight:800;color:var(--accent)}
+.plan-card .pscore{margin-top:4px;font-size:13px;color:var(--muted)}
+.plan-card .premark{margin-top:10px;font-size:13px;color:var(--muted-2);flex:1;line-height:1.55}
+.plan-card .btn{margin-top:16px}
+.plans-empty{padding:34px 18px;border:1px dashed var(--line-strong);border-radius:var(--radius);text-align:center;color:var(--muted);font-size:14.5px}
+.row-line{display:flex;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--line);font-size:14.5px}
+.row-line:last-child{border-bottom:none}
+.row-line .memo{flex:1;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-line .when{color:var(--muted-2);font-size:13px;white-space:nowrap}
+.delta{font-weight:700;white-space:nowrap}
+.delta.plus{color:var(--accent)}
+.delta.minus{color:#ff9f9f}
+.empty-state{padding:30px 16px;text-align:center;color:var(--muted-2);font-size:14px}
+.inline-form{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.inline-form .field{flex:1;min-width:200px;margin-bottom:0}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.logs-more{margin-top:14px;text-align:center}
+.notice{padding:12px 16px;border-radius:12px;font-size:13.5px;margin-bottom:16px;display:none}
+.notice.show{display:block}
+.notice.err{background:rgba(255,110,110,.1);border:1px solid rgba(255,110,110,.3);color:#ffb0b0}
+.notice.ok{background:rgba(93,240,168,.08);border:1px solid rgba(93,240,168,.3);color:var(--accent)}
+.footer-note{margin-top:40px;text-align:center;font-size:13px;color:var(--muted-2)}
+
+@media (max-width:980px){
+  .hero-cards{grid-template-columns:1fr 1fr}
+  .plans-row{grid-template-columns:1fr 1fr}
+  .two-col{grid-template-columns:1fr}
+}
+@media (max-width:640px){
+  .wrap{padding:24px 16px 64px}
+  .hero-cards{grid-template-columns:1fr}
+  .plans-row{grid-template-columns:1fr}
+  .kv{grid-template-columns:1fr}
+  .topbar-user .hide-sm{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none !important;animation:none !important}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-in">
+    <a class="brand" href="index.html"><span class="brand-mark">▲</span>奇计 Agent</a>
+    <div class="topbar-user" id="topbar-user"></div>
+  </div>
+</div>
+
+<!-- ============ 未登录：登录/注册 ============ -->
+<div class="view on" id="view-auth">
+  <div class="auth-shell">
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <div class="auth-tab on" id="tab-login" data-tab="login">登录</div>
+        <div class="auth-tab" id="tab-register" data-tab="register">注册</div>
+      </div>
+
+      <form id="form-login">
+        <div class="field">
+          <label>手机号</label>
+          <input type="tel" id="login-mobile" maxlength="11" placeholder="注册手机号" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label>密码</label>
+          <input type="password" id="login-password" placeholder="密码" autocomplete="current-password" required>
+        </div>
+        <div class="auth-msg" id="login-msg"></div>
+        <button class="btn btn-primary btn-block" type="submit" id="login-btn">登 录</button>
+        <div class="auth-foot">忘记密码？<a id="forgot-link">查看找回方式</a> · <span id="forgot-tip" style="display:none"></span></div>
+      </form>
+
+      <form id="form-register" style="display:none">
+        <div class="field">
+          <label>手机号</label>
+          <input type="tel" id="reg-mobile" maxlength="11" placeholder="11 位手机号" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label>密码</label>
+          <input type="password" id="reg-password" minlength="6" placeholder="至少 6 位" autocomplete="new-password" required>
+        </div>
+        <div class="field">
+          <label>邀请码（选填）</label>
+          <input type="text" id="reg-invite" placeholder="有代理邀请码请填写，无则注册体验账号">
+          <div class="field-tip">不填邀请码 = 体验用户；填邀请码绑定你的服务商</div>
+        </div>
+        <div class="auth-msg" id="reg-msg"></div>
+        <button class="btn btn-primary btn-block" type="submit" id="reg-btn">注 册</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 已登录：个人中心 ============ -->
+<div class="view" id="view-dash">
+  <div class="wrap">
+    <div class="notice" id="dash-notice"></div>
+
+    <div class="hero-cards">
+      <div class="hcard">
+        <div class="lbl">积分余额</div>
+        <div class="val" id="stat-score">—</div>
+        <div class="sub" id="stat-mode"></div>
+      </div>
+      <div class="hcard">
+        <div class="lbl">账号</div>
+        <div class="val" id="stat-user" style="font-size:clamp(20px,2.6vw,28px)">—</div>
+        <div class="sub" id="stat-mobile"></div>
+      </div>
+      <div class="hcard">
+        <div class="lbl">所属服务商</div>
+        <div class="val" id="stat-agent" style="font-size:clamp(20px,2.6vw,28px)">—</div>
+        <div class="sub" id="stat-joined"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="buy">
+      <div class="panel-head">
+        <h3>套餐购买</h3>
+        <span class="hint" id="plans-pay-hint">实时读取平台套餐</span>
+      </div>
+      <div class="plans-row" id="plans-row"><div class="plans-empty">套餐加载中…</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h3>充值码兑换</h3>
+        <span class="hint">由你的服务商线下发放</span>
+      </div>
+      <div class="inline-form">
+        <div class="field">
+          <label>充值码</label>
+          <input type="text" id="redeem-code" placeholder="输入充值码" style="text-transform:uppercase">
+        </div>
+        <button class="btn btn-primary" id="redeem-btn">兑换</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h3>积分流水</h3>
+        <span class="hint" id="logs-total"></span>
+      </div>
+      <div id="logs-list"><div class="empty-state">加载中…</div></div>
+      <div class="logs-more"><button class="btn btn-outline" id="logs-more-btn" style="display:none">加载更多</button></div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel" style="margin-bottom:0">
+        <div class="panel-head"><h3>资料设置</h3></div>
+        <div class="field">
+          <label>昵称</label>
+          <input type="text" id="pf-nickname" maxlength="30" placeholder="昵称（最长 30 字符）">
+        </div>
+        <div class="field">
+          <label>邮箱</label>
+          <input type="email" id="pf-email" placeholder="绑定邮箱">
+        </div>
+        <button class="btn btn-primary" id="pf-save">保存资料</button>
+      </div>
+      <div class="panel" style="margin-bottom:0">
+        <div class="panel-head"><h3>修改密码</h3><span class="hint">修改后需重新登录</span></div>
+        <div class="field">
+          <label>原密码</label>
+          <input type="password" id="pw-old" autocomplete="current-password">
+        </div>
+        <div class="field">
+          <label>新密码</label>
+          <input type="password" id="pw-new" minlength="6" autocomplete="new-password" placeholder="至少 6 位">
+        </div>
+        <button class="btn btn-outline" id="pw-save">修改密码</button>
+      </div>
+    </div>
+
+    <div class="footer-note" id="copyright"></div>
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   奇计 Agent 网页个人中心
+   全部数据来自测试站真实 API（qiji-agent-backend application/api/client/*）：
+     POST /api/client/v1/auth/login          登录（mobile/username + password）
+     POST /api/client/v1/auth/register       注册（mobile+password+invite_code?）
+     GET  /api/client/v1/auth/forgottip      找回密码提示
+     POST /api/client/v1/auth/changepwd      修改密码（Bearer）
+     POST /api/client/v1/portal/ticket       后台票据换登录态（#ticket=xxx）
+     GET  /api/client/v1/profile/index       资料+积分（Bearer）
+     POST /api/client/v1/profile/update      昵称/邮箱（Bearer）
+     GET  /api/client/v1/profile/scorelogs   积分流水（Bearer，分页）
+     POST /api/client/v1/recharge/redeem     充值码兑换（Bearer）
+     GET  /api/client/v1/plan/index          套餐列表（公开）
+     POST /api/client/v1/plan/order          下单（Bearer）→ pay_url 跳转
+   禁止 mock：接口不通即显示空态/错误，绝不编造数据。
+   ================================================================ */
+const API_BASE = 'http://test.agent.aijiqiren.vip';
+const LS_TOKEN = 'qiji_portal_token';
+const LS_USER  = 'qiji_portal_user';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+document.getElementById('copyright').textContent = '© ' + new Date().getFullYear() + ' 奇计 · 智合芯晟';
+
+let token = localStorage.getItem(LS_TOKEN) || '';
+let cachedUser = null;
+try { cachedUser = JSON.parse(localStorage.getItem(LS_USER) || 'null'); } catch (e) { cachedUser = null; }
+
+/* ---------- API 封装 ---------- */
+async function api(path, { method = 'GET', body = null, auth = false } = {}) {
+  const headers = {};
+  let url = API_BASE + path;
+  if (body) { headers['Content-Type'] = 'application/x-www-form-urlencoded'; }
+  if (auth && token) headers['Authorization'] = 'Bearer ' + token;
+  const resp = await fetch(url, { method, headers, body: body ? new URLSearchParams(body) : undefined });
+  const j = await resp.json().catch(() => { throw new Error('接口返回非 JSON（HTTP ' + resp.status + '）'); });
+  if (j.code === 1) return j.data;
+  /* 未登录态（FastAdmin error 的 code 可能为 0 或 401） */
+  if (auth && (j.code === 401 || /请先登录/.test(j.msg || ''))) {
+    doLogout(true);
+    throw new Error(j.msg || '登录已过期，请重新登录');
+  }
+  throw new Error(j.msg || ('接口错误 code=' + j.code));
+}
+
+/* ---------- 视图切换 ---------- */
+function showView(name) {
+  $('view-auth').classList.toggle('on', name === 'auth');
+  $('view-dash').classList.toggle('on', name === 'dash');
+}
+function renderTopbar() {
+  const box = $('topbar-user');
+  if (token && cachedUser) {
+    box.innerHTML =
+      '<span class="score-pill hide-sm">积分 ' + Number(cachedUser.score || 0).toLocaleString() + '</span>' +
+      '<span>' + esc(cachedUser.username || cachedUser.mobile || '用户') + '</span>' +
+      '<button class="link-btn" id="logout-btn">退出</button>';
+    $('logout-btn').addEventListener('click', () => doLogout(false));
+  } else {
+    box.innerHTML = '<a class="btn btn-outline" href="index.html" style="padding:8px 16px;font-size:13.5px">返回官网</a>';
+  }
+}
+function doLogout(silent) {
+  token = '';
+  cachedUser = null;
+  localStorage.removeItem(LS_TOKEN);
+  localStorage.removeItem(LS_USER);
+  renderTopbar();
+  showView('auth');
+  if (!silent) setMsg('login-msg', 'ok', '已退出登录');
+}
+
+function setMsg(id, type, text) {
+  const el = $(id); el.textContent = text || ''; el.className = 'auth-msg ' + (type || '');
+}
+let noticeTimer = null;
+function notice(type, text) {
+  const el = $('dash-notice');
+  el.textContent = text;
+  el.className = 'notice show ' + type;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { el.className = 'notice'; }, 5000);
+}
+
+/* ---------- 登录/注册 tabs ---------- */
+document.querySelectorAll('.auth-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('on', t === tab));
+    const isLogin = tab.dataset.tab === 'login';
+    $('form-login').style.display = isLogin ? '' : 'none';
+    $('form-register').style.display = isLogin ? 'none' : '';
+  });
+});
+
+/* ---------- 登录 ---------- */
+function applyLogin(data) {
+  token = data.token || '';
+  cachedUser = Object.assign({}, data.user_info || {}, {
+    score: data.score != null ? data.score : (data.user_info && data.user_info.score),
+    mode: data.mode || (data.user_info && data.user_info.mode),
+  });
+  localStorage.setItem(LS_TOKEN, token);
+  localStorage.setItem(LS_USER, JSON.stringify(cachedUser));
+  renderTopbar();
+  showView('dash');
+  refreshDash();
+}
+
+$('form-login').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = $('login-btn'); btn.disabled = true; setMsg('login-msg', '', '登录中…');
+  try {
+    const data = await api('/api/client/v1/auth/login', {
+      method: 'POST',
+      body: { mobile: $('login-mobile').value.trim(), password: $('login-password').value },
+    });
+    setMsg('login-msg', 'ok', '登录成功');
+    applyLogin(data);
+  } catch (err) {
+    setMsg('login-msg', 'err', err.message);
+  } finally { btn.disabled = false; }
+});
+
+/* ---------- 注册 ---------- */
+$('form-register').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = $('reg-btn'); btn.disabled = true; setMsg('reg-msg', '', '注册中…');
+  try {
+    const data = await api('/api/client/v1/auth/register', {
+      method: 'POST',
+      body: {
+        mobile: $('reg-mobile').value.trim(),
+        password: $('reg-password').value,
+        invite_code: $('reg-invite').value.trim(),
+      },
+    });
+    setMsg('reg-msg', 'ok', '注册成功，已自动登录');
+    applyLogin(data);
+  } catch (err) {
+    setMsg('reg-msg', 'err', err.message);
+  } finally { btn.disabled = false; }
+});
+
+/* ---------- 忘记密码提示（真实接口下发文案） ---------- */
+$('forgot-link').addEventListener('click', async () => {
+  const tipEl = $('forgot-tip');
+  if (tipEl.style.display === 'none') {
+    tipEl.style.display = 'inline';
+    tipEl.textContent = '获取中…';
+    try {
+      const d = await api('/api/client/v1/auth/forgottip');
+      tipEl.textContent = d && d.tip ? d.tip : '暂无提示';
+    } catch (err) { tipEl.textContent = err.message; }
+  } else tipEl.style.display = 'none';
+});
+
+/* ---------- Portal 票据（后台「个人中心」按钮跳入） ---------- */
+async function tryPortalTicket() {
+  let ticket = '';
+  const m = location.hash.match(/ticket=([a-f0-9]{32})/i);
+  if (m) ticket = m[1];
+  const q = new URLSearchParams(location.search).get('ticket');
+  if (!ticket && q && /^[a-f0-9]{32}$/i.test(q)) ticket = q;
+  if (!ticket) return false;
+  history.replaceState(null, '', location.pathname);
+  setMsg('login-msg', '', '票据登录中…');
+  try {
+    const data = await api('/api/client/v1/portal/ticket', { method: 'POST', body: { ticket } });
+    applyLogin(data);
+    notice('ok', '已通过后台票据登录');
+    return true;
+  } catch (err) {
+    setMsg('login-msg', 'err', '票据登录失败：' + err.message);
+    return false;
+  }
+}
+
+/* ---------- 登录后的数据拉取 ---------- */
+let logsPage = 1, logsTotal = 0;
+const LOGS_LIMIT = 10;
+
+async function refreshDash() {
+  /* 资料卡（含积分） */
+  try {
+    const p = await api('/api/client/v1/profile/index', { auth: true });
+    cachedUser = Object.assign({}, cachedUser, p);
+    localStorage.setItem(LS_USER, JSON.stringify(cachedUser));
+    renderTopbar();
+    $('stat-score').textContent = Number(p.score || 0).toLocaleString();
+    $('stat-mode').innerHTML = p.mode === 'formal'
+      ? '<span class="badge formal">正式账号</span>'
+      : '<span class="badge trial">体验账号 · 邀请码激活后联系服务商充值</span>';
+    $('stat-user').textContent = p.nickname || p.username || ('用户 ' + p.id);
+    $('stat-mobile').textContent = p.mobile || '';
+    $('stat-agent').textContent = p.agent_name || '平台直连';
+    $('stat-joined').textContent = p.createtime ? ('注册于 ' + p.createtime) : '';
+    $('pf-nickname').value = p.nickname || '';
+    $('pf-email').value = p.email || '';
+  } catch (err) {
+    notice('err', err.message);
+    return;
+  }
+  loadPlans();
+  logsPage = 1; logsTotal = 0;
+  $('logs-list').innerHTML = '<div class="empty-state">加载中…</div>';
+  loadLogs();
+}
+
+async function loadPlans() {
+  const row = $('plans-row');
+  try {
+    const d = await api('/api/client/v1/plan/index');
+    const plans = Array.isArray(d.plans) ? d.plans : [];
+    $('plans-pay-hint').textContent = Number(d.pay_enabled) === 1
+      ? '在线支付已开通'
+      : '未开通在线支付 · 请使用充值码或联系服务商';
+    if (plans.length === 0) {
+      row.innerHTML = '<div class="plans-empty">平台暂未上架套餐，请联系你的服务商</div>';
+      return;
+    }
+    row.innerHTML = plans.map(p =>
+      '<div class="plan-card">' +
+        '<div class="pname">' + esc(p.name) + '</div>' +
+        '<div class="pprice">¥' + Number(p.price).toFixed(2) + '</div>' +
+        '<div class="pscore">' + Number(p.score).toLocaleString() + ' 积分</div>' +
+        (p.remark ? '<div class="premark">' + esc(p.remark) + '</div>' : '<div class="premark"></div>') +
+        '<button class="btn btn-primary" data-plan="' + Number(p.id) + '">立即购买</button>' +
+      '</div>').join('');
+    row.querySelectorAll('button[data-plan]').forEach(btn => {
+      btn.addEventListener('click', () => orderPlan(Number(btn.dataset.plan)));
+    });
+  } catch (err) {
+    row.innerHTML = '<div class="plans-empty">套餐加载失败：' + esc(err.message) + '</div>';
+  }
+}
+
+async function orderPlan(planId) {
+  if (!token) { showView('auth'); setMsg('login-msg', 'err', '请先登录后再购买'); return; }
+  const btn = document.querySelector('button[data-plan="' + planId + '"]');
+  if (btn) { btn.disabled = true; btn.textContent = '下单中…'; }
+  try {
+    const d = await api('/api/client/v1/plan/order', {
+      method: 'POST', auth: true,
+      body: { plan_id: planId, pay_type: 'alipay' },
+    });
+    if (d && d.pay_url) {
+      notice('ok', '订单 ' + d.order_no + ' 已创建，正在跳转支付…');
+      window.open(d.pay_url, '_blank');
+      setTimeout(loadPlans, 1500);
+    } else throw new Error('接口未返回支付链接');
+  } catch (err) {
+    notice('err', err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '立即购买'; }
+  }
+}
+
+async function loadLogs() {
+  const list = $('logs-list');
+  try {
+    const d = await api('/api/client/v1/profile/scorelogs?page=' + logsPage + '&limit=' + LOGS_LIMIT, { auth: true });
+    logsTotal = Number(d.total || 0);
+    const rows = Array.isArray(d.rows) ? d.rows : [];
+    if (logsPage === 1) list.innerHTML = '';
+    if (rows.length === 0 && logsPage === 1) {
+      list.innerHTML = '<div class="empty-state">暂无积分流水</div>';
+    } else {
+      rows.forEach(r => {
+        const sc = Number(r.score || 0);
+        const div = document.createElement('div');
+        div.className = 'row-line';
+        div.innerHTML =
+          '<span class="memo">' + esc(r.memo || '积分变动') + '</span>' +
+          '<span class="when">' + esc(r.createtime || '') + '</span>' +
+          '<span class="delta ' + (sc >= 0 ? 'plus' : 'minus') + '">' + (sc >= 0 ? '+' : '') + sc + '</span>';
+        list.appendChild(div);
+      });
+    }
+    $('logs-total').textContent = '共 ' + logsTotal + ' 条';
+    const shown = list.querySelectorAll('.row-line').length;
+    $('logs-more-btn').style.display = shown < logsTotal ? '' : 'none';
+  } catch (err) {
+    if (logsPage === 1) list.innerHTML = '<div class="empty-state">流水加载失败：' + esc(err.message) + '</div>';
+    $('logs-more-btn').style.display = 'none';
+  }
+}
+$('logs-more-btn').addEventListener('click', () => { logsPage++; loadLogs(); });
+
+/* ---------- 充值码 ---------- */
+$('redeem-btn').addEventListener('click', async () => {
+  const code = $('redeem-code').value.trim().toUpperCase();
+  if (!code) { notice('err', '请输入充值码'); return; }
+  const btn = $('redeem-btn'); btn.disabled = true; btn.textContent = '兑换中…';
+  try {
+    const d = await api('/api/client/v1/recharge/redeem', { method: 'POST', auth: true, body: { code } });
+    const after = d && d.score != null ? d.score : null;
+    notice('ok', after != null ? ('兑换成功，当前积分 ' + Number(after).toLocaleString()) : '兑换成功');
+    $('redeem-code').value = '';
+    refreshDash();
+  } catch (err) {
+    notice('err', err.message);
+  } finally { btn.disabled = false; btn.textContent = '兑换'; }
+});
+
+/* ---------- 资料保存 ---------- */
+$('pf-save').addEventListener('click', async () => {
+  const body = {};
+  const nick = $('pf-nickname').value.trim();
+  const mail = $('pf-email').value.trim();
+  if (nick) body.nickname = nick;
+  if (mail) body.email = mail;
+  if (!body.nickname && !body.email) { notice('err', '没有需要更新的内容'); return; }
+  const btn = $('pf-save'); btn.disabled = true;
+  try {
+    await api('/api/client/v1/profile/update', { method: 'POST', auth: true, body });
+    notice('ok', '保存成功');
+    refreshDash();
+  } catch (err) { notice('err', err.message); }
+  finally { btn.disabled = false; }
+});
+
+/* ---------- 修改密码（成功后 token 作废 → 回登录页） ---------- */
+$('pw-save').addEventListener('click', async () => {
+  const oldp = $('pw-old').value, newp = $('pw-new').value;
+  if (!oldp || newp.length < 6) { notice('err', '请填写原密码，新密码至少 6 位'); return; }
+  const btn = $('pw-save'); btn.disabled = true;
+  try {
+    await api('/api/client/v1/auth/changepwd', { method: 'POST', auth: true, body: { oldpassword: oldp, newpassword: newp } });
+    doLogout(true);
+    setMsg('login-msg', 'ok', '密码已修改，请用新密码重新登录');
+  } catch (err) { notice('err', err.message); }
+  finally { btn.disabled = false; }
+});
+
+/* ---------- 启动 ---------- */
+(async function boot() {
+  renderTopbar();
+  if (await tryPortalTicket()) return;
+  if (token) {
+    showView('dash');
+    refreshDash();
+  }
+})();
+</script>
+</body>
+</html>
