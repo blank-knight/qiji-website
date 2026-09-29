@@ -840,6 +840,7 @@ function applyPlanetMaterial(mesh) {
   mat.envMapIntensity = 0;
   mat.transparent = true; /* 入场淡入需要；opacity=1 时无排序副作用 */
   mat.opacity = 0;       /* 出生即透明，由入场动画拉到 1 */
+  if (mat.map) downscaleTex(mat.map); /* 主贴图同治:6000²→2048²,首绑定上传从~1s冻结降到几十ms */
   mat.extensions = Object.assign({}, mat.extensions, { derivatives: true });
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.time = planetTime;
@@ -1070,6 +1071,22 @@ const ENTRY_START_Y = -6.5;
 let planetLoadedAt = -1;
 
 const texLoader = new THREE.TextureLoader();
+
+/* 贴图降采样:GLB内嵌6000²贴图单张144MB,首绑定时上传GPU实测冻结~1s(砸在入场中段)。
+   2048²上传量降9倍(~几十ms),星球屏径<1000px时仍2x过采样,画质无损。 */
+const downscaleTex = (tex, max = 2048) => {
+  const img = tex && tex.image;
+  if (!img || !img.width || img.width <= max) return tex;
+  const c = document.createElement('canvas');
+  const k = max / img.width;
+  c.width = max; c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  if (img.close) img.close(); /* ImageBitmap确定性释放144MB:不等GC(大GC停顿~800ms实测砸在入场中段) */
+  tex.image = c;
+  tex.needsUpdate = true;
+  return tex;
+};
+
 texLoader.load(PLANET_CLOUDS_PNG, buildClouds, undefined, (e) => {
   console.warn('[qiji-ascend] clouds texture failed', e);
 });
@@ -1084,13 +1101,16 @@ gltfLoader.load(PLANET_LIGHTS_GLB, (gltf) => {
   gltf.scene.traverse((o) => { if (!nightMesh && o.isMesh) nightMesh = o; });
   nightTex = nightMesh && nightMesh.material && nightMesh.material.map ? nightMesh.material.map : null;
   if (!nightTex) console.warn('[qiji-ascend] planet-lights.glb has no material.map');
+  nightTex = downscaleTex(nightTex);
 
   gltfLoader.load(PLANET_GLB, (g2) => {
+    const __t0 = performance.now();
     let mesh = null;
     g2.scene.traverse((o) => { if (!mesh && o.isMesh) mesh = o; });
     if (!mesh) { console.warn('[qiji-ascend] planet.glb has no mesh'); return; }
     mesh.geometry.computeBoundingSphere();
     const r = mesh.geometry.boundingSphere.radius || 1;
+    downscaleTex(nightTex); /* 夜灯贴图在此刻才确定可用:两GLB串行,夜灯先加载已就绪 */
     mesh.scale.setScalar(CONFIG.planetRadius / r);
     applyPlanetMaterial(mesh);
     mesh.layers.set(LAYERS.TORUS_SCENE);
@@ -1108,7 +1128,18 @@ gltfLoader.load(PLANET_LIGHTS_GLB, (gltf) => {
        入场进行到 4%(透明度≈7%且仍在屏下深处)时才首次进渲染链——
        卡顿落在完全看不见的时刻,不再有"上升前冻一下"。 */
     planetGroup.visible = false;
-    planetLoadedAt = performance.now();
+    /* 确定性上传+预编译:官方API。实测隐形期只跑一轮渲染不够——
+       MeshStandardMaterial 的 transparent 变体在 opacity>阈值 首次绘制时才编译(415ms砸在entryT 26%)。
+       compile() 把场景图全部 program(含透明变体)在隐形期一次编齐。 */
+    renderer.compile(scene, camera);
+    renderer.initTexture(planetMesh.material.map);
+    renderer.initTexture(nightTex);
+    /* 首载专属冻结(实测400-800ms,重播为零):加载大资产后的浏览器善后(大GC/内存整理)
+       会被动画期的内存分配触发,栽进渲染帧。等空闲善后完(requestIdleCallback,600ms兜底)再开始入场。 */
+    const __startEntry = () => { planetLoadedAt = performance.now(); };
+    if (window.requestIdleCallback) requestIdleCallback(__startEntry, { timeout: 600 });
+    else setTimeout(__startEntry, 500);
+    console.log('[qiji-ascend] planet load-callback total', Math.round(performance.now() - __t0), 'ms');
   }, undefined, (e) => { console.warn('[qiji-ascend] planet.glb failed', e); });
 }, undefined, (e) => { console.warn('[qiji-ascend] planet-lights.glb failed', e); });
 
@@ -1153,7 +1184,10 @@ function stepFrame(dt) {
   /* one-time float-up entrance（积分式 + 淡入；用户拍板要动画，不再被 reduced-motion 豁免） */
   let entryY = 0, entryFade = 1;
   if (planetLoadedAt > 0 && !entryDone) {
-    entryT += dt / ENTRY_DUR;
+    /* dt clamp:首载善后冻结(340-800ms,entryT≈0.26 处,一次性)无法消灭,
+       但可消灭其"跳变"伤害——长帧最多推进 60ms 进度,冻结后从暂停处平滑续走,
+       感知=稍慢而非卡顿+瞬移。 */
+    entryT += Math.min(dt, 0.06) / ENTRY_DUR;
     if (entryT >= 1) { entryT = 1; entryDone = true; }
     /* 4% 处放行首渲染:星球 opacity≈7%、仍在屏下深处,编译卡顿落在隐形时刻 */
     if (entryT >= 0.04 && !planetGroup.visible) { planetGroup.visible = true; cloudGroup.visible = true; }
@@ -1195,17 +1229,22 @@ function stepFrame(dt) {
   /* 修乒乓闪烁：EffectComposer 的 swapBuffers 状态跨帧残留，
      奇偶帧 renderTarget1 在“成品”与“半成品(缺gamma/copy)”间交替 → 整屏亮度每帧跳变。
      每帧强制复位读写指针，并动态采样 readBuffer（链路写入侧，恒为最新成品）。 */
+  const __f0 = performance.now(); /* 分段计时:抓入场期慢帧真凶 */
   torusComposer.writeBuffer = torusComposer.renderTarget1;
   torusComposer.readBuffer = torusComposer.renderTarget2;
   torusComposer.render();
+  const __f1 = performance.now();
   camera.layers.set(LAYERS.BLOOM_SCENE);
   bloomComposer.writeBuffer = bloomComposer.renderTarget1;
   bloomComposer.readBuffer = bloomComposer.renderTarget2;
   bloomComposer.render();
+  const __f2 = performance.now();
   camera.layers.set(LAYERS.ENTIRE_SCENE);
   finalPass.uniforms.torusTexture.value = torusComposer.readBuffer.texture;
   finalPass.uniforms.bloomTexture.value = bloomComposer.readBuffer.texture;
   finalComposer.render();
+  const __f3 = performance.now();
+  if (__f3 - __f0 > 120) { const msg = 'slow frame ' + Math.round(__f3-__f0) + 'ms | torus ' + Math.round(__f1-__f0) + ' bloom ' + Math.round(__f2-__f1) + ' final ' + Math.round(__f3-__f2) + ' | entryT ' + entryT.toFixed(2); console.log('[qiji-ascend]', msg); (window.__slow = window.__slow || []).push(msg); }
 }
 
 function animate() {
@@ -1219,6 +1258,7 @@ animate();
    __qiji.replayEntrance() 重播入场动画（验收过渡用） */
 window.__qiji = { scene, camera, worldGroup, planetGroup, cloudGroup, stars, motes, glowMesh, renderer,
   stepFrame, finalPass, times: { planetTime, cloudTime, starTime, markerTime },
+  get entryStart(){ return planetLoadedAt; }, get entryT(){ return entryT; },
   replayEntrance(){ entryT = 0; entryDone = false; planetGroup.visible = false; cloudGroup.visible = false; planetLoadedAt = performance.now(); } };
 
 /* ================= resize ================= */
