@@ -639,7 +639,8 @@ const glowMat = new THREE.ShaderMaterial({
   transparent: true,
   side: THREE.DoubleSide,
   depthWrite: false,
-  depthTest: false,
+  depthTest: true, /* 灯泡修复：光晕平面在球心，必须被星球(遮挡球)深度挡住，
+                      否则 3.35 强度的蓝光直接铺满盘面(255,255,255 溢出)。只留盘外光环。 */
   blending: THREE.AdditiveBlending,
   uniforms: {
     uGlow: { value: hexToVec3(CONFIG.glowColor) },
