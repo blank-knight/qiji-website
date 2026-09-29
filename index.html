@@ -838,6 +838,8 @@ function applyPlanetMaterial(mesh) {
   mat.metalness = 0;
   mat.roughness = 1;
   mat.envMapIntensity = 0;
+  mat.transparent = true; /* 入场淡入需要；opacity=1 时无排序副作用 */
+  mat.opacity = 0;       /* 出生即透明，由入场动画拉到 1 */
   mat.extensions = Object.assign({}, mat.extensions, { derivatives: true });
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.time = planetTime;
@@ -931,6 +933,8 @@ uniform float uPhase;
 varying vec2 vCloudUv;
 ${SNOISE}
 ` + shader.fragmentShader.replace('#include <dithering_fragment>', CLOUD_FRAG);
+      mesh.userData.shader = shader;      /* 入场淡入要缩放 uOpacity */
+      mesh.userData.baseOpacity = layer.o;
     };
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(CONFIG.planetRadius * layer.h, 64, 64), mat);
     mesh.rotation.y = layer.ry;
@@ -1116,6 +1120,10 @@ let curP = 0;
 let curX = STOPS_X[0].v, curY = STOPS_Y[0].v, curS = STOPS_S[0].v;
 let spinPhase = 0;
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
+/* 入场改积分式：原实现用 performance.now() 差值，星球首帧前的着色器编译卡顿
+   (snoise 注入的复杂 shader, 首次编译可达数百 ms) 会直接吃掉动画时间 → 闪现。
+   积分式：rAF 停摆 = 动画暂停，恢复后继续，进度永不丢。 */
+let entryT = 0, entryDone = false;
 
 const clock = new THREE.Clock();
 
@@ -1139,11 +1147,20 @@ function stepFrame(dt) {
   curY += (sample(STOPS_Y, curP) - curY) * k;
   curS += (sample(STOPS_S, curP) - curS) * k;
 
-  /* one-time float-up entrance */
-  let entryY = 0;
-  if (planetLoadedAt > 0 && !REDUCED_MOTION) {
-    const t = (performance.now() - planetLoadedAt) / 1000 / ENTRY_DUR;
-    entryY = t >= 1 ? 0 : ENTRY_START_Y * Math.pow(1 - t, 3);
+  /* one-time float-up entrance（积分式 + 淡入；用户拍板要动画，不再被 reduced-motion 豁免） */
+  let entryY = 0, entryFade = 1;
+  if (planetLoadedAt > 0 && !entryDone) {
+    entryT += dt / ENTRY_DUR;
+    if (entryT >= 1) { entryT = 1; entryDone = true; }
+    const e = 1 - Math.pow(1 - entryT, 3);
+    entryY = ENTRY_START_Y * (1 - e);
+    entryFade = Math.min(1, entryT / 0.35); /* 前35%时长完成淡入,探头前已接近全亮 */
+    if (planetMesh) planetMesh.material.opacity = entryFade;
+    for (const cm of cloudMeshes) {
+      if (cm.userData.shader && cm.userData.baseOpacity != null) {
+        cm.userData.shader.uniforms.uOpacity.value = cm.userData.baseOpacity * entryFade;
+      }
+    }
   }
   worldGroup.position.set(curX, curY + entryY, 0);
   worldGroup.scale.setScalar(curS);
@@ -1193,9 +1210,11 @@ function animate() {
 animate();
 
 /* debug hook（验收/调试用）：window.__qiji.stars.visible=false 可逐对象归因；
-   无头环境 rAF 冻结时用 __qiji.stepFrame(0.05) 手动逐帧推进做帧差分 */
+   无头环境 rAF 冻结时用 __qiji.stepFrame(0.05) 手动逐帧推进做帧差分；
+   __qiji.replayEntrance() 重播入场动画（验收过渡用） */
 window.__qiji = { scene, camera, worldGroup, planetGroup, cloudGroup, stars, motes, glowMesh, renderer,
-  stepFrame, finalPass, times: { planetTime, cloudTime, starTime, markerTime } };
+  stepFrame, finalPass, times: { planetTime, cloudTime, starTime, markerTime },
+  replayEntrance(){ entryT = 0; entryDone = false; planetLoadedAt = performance.now(); } };
 
 /* ================= resize ================= */
 window.addEventListener('resize', () => {
