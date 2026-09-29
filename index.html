@@ -659,6 +659,7 @@ const glowMat = new THREE.ShaderMaterial({
 const glowMesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), glowMat);
 glowMesh.scale.setScalar(CONFIG.planetRadius * 2.3);
 glowMesh.layers.set(LAYERS.BLOOM_SCENE);
+glowMesh.visible = false; /* 用户拍板：外圈光晕全取消，太刺眼。星球rim边缘光保留(属球面本体)。要恢复改回 true 即可 */
 worldGroup.add(glowMesh);
 
 /* ================= ambient atmosphere motes (Points) ================= */
