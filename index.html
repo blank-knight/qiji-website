@@ -471,6 +471,10 @@ const LAYERS = { NONE:0, TORUS_SCENE:1, BLOOM_SCENE:2, ENTIRE_SCENE:3 };
 const ASSET_BASE_URL = 'https://api.getlayers.ai/storage/v1/object/public/public/assets/ascend-d9857ad1f2';
 const PLANET_GLB = ASSET_BASE_URL + '/planet.glb';
 const PLANET_LIGHTS_GLB = ASSET_BASE_URL + '/planet-lights.glb';
+/* 资产瘦身版:贴图 6000²→2048²(WebP q82 重压缩),文件 1.1M→337K / 180K→91K。
+   解码内存 472MB→~48MB,首载冻结源头消除。downscaleTex 运行时已是 no-op(≤2048 直接返回)。 */
+const PLANET_GLB_SLIM = 'planet-2048.glb';
+const PLANET_LIGHTS_GLB_SLIM = 'planet-lights-2048.glb';
 const PLANET_CLOUDS_PNG = ASSET_BASE_URL + '/planet-clouds.png';
 
 /* ================= helpers ================= */
@@ -1096,14 +1100,14 @@ dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5
 const gltfLoader = new GLTFLoader();
 gltfLoader.setDRACOLoader(dracoLoader);
 
-gltfLoader.load(PLANET_LIGHTS_GLB, (gltf) => {
+gltfLoader.load(PLANET_LIGHTS_GLB_SLIM, (gltf) => {
   let nightMesh = null;
   gltf.scene.traverse((o) => { if (!nightMesh && o.isMesh) nightMesh = o; });
   nightTex = nightMesh && nightMesh.material && nightMesh.material.map ? nightMesh.material.map : null;
   if (!nightTex) console.warn('[qiji-ascend] planet-lights.glb has no material.map');
   nightTex = downscaleTex(nightTex);
 
-  gltfLoader.load(PLANET_GLB, (g2) => {
+  gltfLoader.load(PLANET_GLB_SLIM, (g2) => {
     const __t0 = performance.now();
     let mesh = null;
     g2.scene.traverse((o) => { if (!mesh && o.isMesh) mesh = o; });
