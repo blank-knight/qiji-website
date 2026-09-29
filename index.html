@@ -1104,16 +1104,10 @@ gltfLoader.load(PLANET_LIGHTS_GLB, (gltf) => {
     starOccluder.layers.set(LAYERS.BLOOM_SCENE);
     planetGroup.add(starOccluder);
     buildMarkers(mesh);
-    /* 预热：入场动画开始前先干跑一轮三通道渲染，把 shader 编译(注入 snoise 的
-       复杂程序首编译可达秒级)+6000²纹理上传+渲染目标分配全部消耗在星球还
-       隐形(osphere opacity=0, 云 uOpacity=0)的阶段，动画期不再卡顿。 */
-    camera.layers.set(LAYERS.TORUS_SCENE);
-    torusComposer.render();
-    camera.layers.set(LAYERS.BLOOM_SCENE);
-    bloomComposer.render();
-    camera.layers.set(LAYERS.ENTIRE_SCENE);
-    finalComposer.render();
-    cloudGroup.visible = true;
+    /* 首渲染(编译+6000²上传)的卡顿不可消灭,只可搬家:星球与云层先保持隐形,
+       入场进行到 4%(透明度≈7%且仍在屏下深处)时才首次进渲染链——
+       卡顿落在完全看不见的时刻,不再有"上升前冻一下"。 */
+    planetGroup.visible = false;
     planetLoadedAt = performance.now();
   }, undefined, (e) => { console.warn('[qiji-ascend] planet.glb failed', e); });
 }, undefined, (e) => { console.warn('[qiji-ascend] planet-lights.glb failed', e); });
@@ -1161,6 +1155,8 @@ function stepFrame(dt) {
   if (planetLoadedAt > 0 && !entryDone) {
     entryT += dt / ENTRY_DUR;
     if (entryT >= 1) { entryT = 1; entryDone = true; }
+    /* 4% 处放行首渲染:星球 opacity≈7%、仍在屏下深处,编译卡顿落在隐形时刻 */
+    if (entryT >= 0.04 && !planetGroup.visible) { planetGroup.visible = true; cloudGroup.visible = true; }
     const e = 1 - Math.pow(1 - entryT, 3);
     entryY = ENTRY_START_Y * (1 - e);
     entryFade = Math.min(1, entryT / 0.6); /* 淡入拉长到60%:与浮升同步收尾,消除"已全亮又卡一下"的跳变 */
@@ -1223,7 +1219,7 @@ animate();
    __qiji.replayEntrance() 重播入场动画（验收过渡用） */
 window.__qiji = { scene, camera, worldGroup, planetGroup, cloudGroup, stars, motes, glowMesh, renderer,
   stepFrame, finalPass, times: { planetTime, cloudTime, starTime, markerTime },
-  replayEntrance(){ entryT = 0; entryDone = false; planetLoadedAt = performance.now(); } };
+  replayEntrance(){ entryT = 0; entryDone = false; planetGroup.visible = false; cloudGroup.visible = false; planetLoadedAt = performance.now(); } };
 
 /* ================= resize ================= */
 window.addEventListener('resize', () => {
